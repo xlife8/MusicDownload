@@ -34,10 +34,10 @@ type ResInfo struct {
 }
 
 const reqURL = "http://music.sonimei.cn"
-const chanSize = 10
+const chanSize = 100
 
 /*歌曲信息来源*/
-var siteType = []string{"netease", "qq", "kugou", "kuwo", "xiami", "baidu", "1ting", "migu", "lizhi", "qingting", "ximalaya", "kg"}
+var siteType = []string{"qq", "kugou", "kuwo", "netease", "xiami", "baidu", "1ting", "migu", "lizhi", "qingting", "ximalaya", "kg"}
 
 /*GetSongInfo 获取歌曲详细信息*/
 func GetSongInfo(input, filter string, resInfo *ResInfo) error {
@@ -194,6 +194,7 @@ func DownLoadSongFromList(songChan chan string, wgOut *sync.WaitGroup) {
 	songList, err := os.Open("./songs.txt")
 	if err != nil {
 		fmt.Println("read song list err:", err)
+		fmt.Println("在当前目录下没有找到songs.txt文件。")
 		return
 	}
 	defer songList.Close()
@@ -252,37 +253,5 @@ func main() {
 	wg.Add(1)
 	go DownLoadSongFromList(songChan, &wg)
 	wg.Wait()
-	/*
-		songList, err := os.Open("./songs.txt")
-		if err != nil {
-			fmt.Println("read song list err:", err)
-			return
-		}
-		defer songList.Close()
-
-		err = os.MkdirAll("./songs", 0775)
-		if err != nil {
-			fmt.Println("创建songs文件夹失败，请在当前目录手动创建songs文件夹。")
-			return
-		}
-
-		var wg sync.WaitGroup
-
-		reader := bufio.NewReader(songList)
-		for {
-			line, _, err := reader.ReadLine()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				fmt.Println("ReadLine err", err)
-				continue
-			}
-			songName := string(line)
-			wg.Add(1)
-			go DownLoad(songName, "name", "./songs/", &wg)
-
-		}
-		wg.Wait()
-	*/
+	close(songChan)
 }
