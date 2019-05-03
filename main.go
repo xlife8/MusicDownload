@@ -34,6 +34,7 @@ type ResInfo struct {
 }
 
 const reqURL = "http://music.sonimei.cn"
+const chanSize = 10
 
 /*歌曲信息来源*/
 var siteType = []string{"netease", "qq", "kugou", "kuwo", "xiami", "baidu", "1ting", "migu", "lizhi", "qingting", "ximalaya", "kg"}
@@ -187,7 +188,9 @@ func DownLoad(input, filter, savePath string, wg *sync.WaitGroup) {
 	fmt.Println(input, " 下载成功！")
 }
 
-func main() {
+/*DownLoadSongFromList 并发下载控制*/
+func DownLoadSongFromList(songChan chan string, wgOut *sync.WaitGroup) {
+	defer wgOut.Done()
 	songList, err := os.Open("./songs.txt")
 	if err != nil {
 		fmt.Println("read song list err:", err)
@@ -202,22 +205,84 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-
+	isEnd := false
+	var songName string
 	reader := bufio.NewReader(songList)
 	for {
 		line, _, err := reader.ReadLine()
 		if err != nil {
 			if err == io.EOF {
-				break
+				isEnd = true
+				goto createGoRoutine
 			}
 			fmt.Println("ReadLine err", err)
 			continue
 		}
-		songName := string(line)
-		wg.Add(1)
-		go DownLoad(songName, "name", "./songs/", &wg)
-		//		fmt.Println(songName)
 
+		songName = string(line)
+		select {
+		case songChan <- songName:
+			continue
+		default:
+			goto createGoRoutine
+		}
+	createGoRoutine:
+		for {
+			select {
+			case v := <-songChan:
+				wg.Add(1)
+				go DownLoad(v, "name", "./songs/", &wg)
+			default:
+				break createGoRoutine
+			}
+		}
+		if isEnd {
+			wg.Wait()
+			return
+		}
+		//比如管道大小为3,当管道満时第4个不能添加进去，所以要单独处理第四个
+		songChan <- songName
+		wg.Wait()
 	}
+}
+
+func main() {
+	var wg sync.WaitGroup
+	songChan := make(chan string, chanSize)
+	wg.Add(1)
+	go DownLoadSongFromList(songChan, &wg)
 	wg.Wait()
+	/*
+		songList, err := os.Open("./songs.txt")
+		if err != nil {
+			fmt.Println("read song list err:", err)
+			return
+		}
+		defer songList.Close()
+
+		err = os.MkdirAll("./songs", 0775)
+		if err != nil {
+			fmt.Println("创建songs文件夹失败，请在当前目录手动创建songs文件夹。")
+			return
+		}
+
+		var wg sync.WaitGroup
+
+		reader := bufio.NewReader(songList)
+		for {
+			line, _, err := reader.ReadLine()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				fmt.Println("ReadLine err", err)
+				continue
+			}
+			songName := string(line)
+			wg.Add(1)
+			go DownLoad(songName, "name", "./songs/", &wg)
+
+		}
+		wg.Wait()
+	*/
 }
