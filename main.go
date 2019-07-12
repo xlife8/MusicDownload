@@ -39,6 +39,8 @@ const chanSize = 100
 /*歌曲信息来源*/
 var siteType = []string{"qq", "kugou", "kuwo", "netease", "xiami", "baidu", "1ting", "migu", "lizhi", "qingting", "ximalaya", "kg"}
 
+var songAuthorPairs sync.Map
+
 /*GetSongInfo 获取歌曲详细信息*/
 func GetSongInfo(input, filter string, resInfo *ResInfo) error {
 	var err error
@@ -117,6 +119,7 @@ func DownLoadSongPic(savePath, songName, picURL string) error {
 		os.Remove(savePath + songName + ".jpg")
 		return errors.New("failed to download song " + songName + " pictrue")
 	}
+	file.Close()
 	return nil
 }
 
@@ -127,9 +130,25 @@ func DownLoadSong(resInfo *ResInfo, savePath string) error {
 		savePath += "/"
 	}
 
-	song := resInfo.Data[0].Addr
-	songPic := resInfo.Data[0].Pic
-	songName := resInfo.Data[0].Title
+	song, songPic, songName := "", "", ""
+	author, _ := songAuthorPairs.Load(resInfo.Data[0].Title)
+	for _, v := range resInfo.Data {
+		if author != nil {
+			if author == v.Author {
+				song = v.Addr
+				songPic = v.Pic
+				songName = v.Title
+				break
+			}
+		} else {
+			break
+		}
+	}
+	if song == "" {
+		song = resInfo.Data[0].Addr
+		songPic = resInfo.Data[0].Pic
+		songName = resInfo.Data[0].Title
+	}
 
 	var response *http.Response
 	var err error
@@ -161,9 +180,11 @@ func DownLoadSong(resInfo *ResInfo, savePath string) error {
 		os.Remove(savePath + songName + ".mp3")
 		return errors.New("failed to download song " + songName)
 	}
+	file.Close()
 
 	lrc, _ := os.Create(savePath + songName + ".lrc")
 	lrc.WriteString(resInfo.Data[0].Lrc)
+	lrc.Close()
 
 	err = DownLoadSongPic(savePath, songName, songPic)
 	return err
@@ -208,6 +229,7 @@ func DownLoadSongFromList(songChan chan string, wgOut *sync.WaitGroup) {
 	var wg sync.WaitGroup
 	isEnd := false
 	var songName string
+	var songAuthor []string
 	reader := bufio.NewReader(songList)
 	for {
 		line, _, err := reader.ReadLine()
@@ -220,7 +242,10 @@ func DownLoadSongFromList(songChan chan string, wgOut *sync.WaitGroup) {
 			continue
 		}
 
-		songName = string(line)
+		songAuthor = strings.Fields(string(line))
+		songAuthorPairs.Store(songAuthor[0], songAuthor[1])
+		songName = songAuthor[0]
+
 		select {
 		case songChan <- songName:
 			continue
